@@ -431,6 +431,88 @@ example.com Sample TXT
 www A 127.0.0.1
 @ MX 10 mail.example.com.
 </code></pre>
+<h2>Query the Dataset</h2>
+<p>Type an IP or domain below to simulate a query:</p>
 
+<input type="text" id="queryInput" placeholder="Enter IP or domain" style="padding:0.5rem; width: 250px;"/>
+<button onclick="runQuery()" style="padding:0.5rem;">Query</button>
+
+<div id="queryOutput" style="margin-top:1rem; padding:1rem; background:#eef6ff; border:1px solid #99bbff; border-radius:5px; max-width: 600px;">
+  <em>Query results will appear here.</em>
+</div>
+
+<script>
+  // Example dataset (simplified)
+  const dataset = [
+    {
+      type: 'ip',
+      query: '192.0.0.2',
+      A: '192.0.0.0',
+      TXT: 'Blocked host 192.0.0.2'
+    },
+    {
+      type: 'ip',
+      query: '127.0.0.2',
+      A: '127.0.0.2',
+      TXT: 'Spam IP Alert'
+    },
+    {
+      type: 'domain',
+      query: 'example.com',
+      A: '127.0.0.2',
+      TXT: 'Listed domain'
+    },
+    {
+      type: 'domain',
+      query: 'sub.example.com',
+      A: '127.0.0.2',
+      TXT: 'Listed domain'
+    }
+  ];
+
+  function runQuery() {
+    const input = document.getElementById('queryInput').value.trim().toLowerCase();
+    const outputDiv = document.getElementById('queryOutput');
+
+    if (!input) {
+      outputDiv.innerHTML = '<em>Please enter an IP address or domain to query.</em>';
+      return;
+    }
+
+    // Simple matching (exact or wildcard for domain)
+    let result = null;
+
+    for (const entry of dataset) {
+      if (entry.type === 'ip' && entry.query === input) {
+        result = entry;
+        break;
+      }
+      if (entry.type === 'domain') {
+        if (entry.query === input) {
+          result = entry;
+          break;
+        }
+        // wildcard: match *.example.com
+        if (entry.query.startsWith('*.')) {
+          const baseDomain = entry.query.slice(2);
+          if (input.endsWith('.' + baseDomain)) {
+            result = entry;
+            break;
+          }
+        }
+      }
+    }
+
+    if (result) {
+      outputDiv.innerHTML = `
+        <strong>Query:</strong> ${input}<br/>
+        <strong>A record:</strong> ${result.A || '(none)'}<br/>
+        <strong>TXT record:</strong> ${result.TXT || '(none)'}
+      `;
+    } else {
+      outputDiv.innerHTML = `<em>No records found for <code>${input}</code>.</em>`;
+    }
+  }
+</script>
 </body>
 </html>
