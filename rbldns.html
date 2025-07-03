@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>RBLDNS Documentation</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    line-height: 1.6;
+    max-width: 900px;
+    margin: auto;
+    padding: 1rem;
+    background: #fafafa;
+    color: #222;
+  }
+  h1, h2, h3, h4 {
+    color: #0055aa;
+  }
+  pre {
+    background: #eee;
+    padding: 1rem;
+    overflow-x: auto;
+    border-radius: 5px;
+  }
+  code {
+    font-family: Consolas, monospace;
+    background: #eee;
+    padding: 0 3px;
+    border-radius: 3px;
+  }
+  table {
+    border-collapse: collapse;
+    margin: 1rem 0;
+    width: 100%;
+  }
+  table, th, td {
+    border: 1px solid #ccc;
+  }
+  th, td {
+    padding: 0.5rem;
+    text-align: left;
+  }
+  th {
+    background: #ddeeff;
+  }
+  blockquote {
+    margin: 1rem 0;
+    padding: 0.5rem 1rem;
+    background: #f0f8ff;
+    border-left: 4px solid #0055aa;
+  }
+  a {
+    color: #0055aa;
+    text-decoration: none;
+  }
+  a:hover {
+    text-decoration: underline;
+  }
+</style>
+</head>
+<body>
+
+<h1>RBLDNS Documentation</h1>
+
+<h2>Overview</h2>
+<p><code>rbldnsd</code> is a lightweight DNS daemon designed to handle queries for:</p>
+<ul>
+  <li><strong>IP-based blacklists (DNSBL)</strong></li>
+  <li><strong>Name-based blacklists (RHSBL)</strong></li>
+</ul>
+
+<h2>Key Concepts</h2>
+<ul>
+  <li><strong>Dataset:</strong> A list of IPs or domain names.</li>
+  <li>A zone can use multiple datasets, and a dataset can be reused across multiple zones.</li>
+  <li>No configuration file — everything is configured via command-line options.</li>
+</ul>
+
+<h2>Zone File Format</h2>
+
+<h3>Record Types</h3>
+
+<h4>Default Record (colon at the start)</h4>
+<pre><code>:192.0.0.0:Sample TXT
+</code></pre>
+<ul>
+  <li>A record: <code>192.0.0.0</code></li>
+  <li>TXT record: <code>"Sample TXT"</code></li>
+</ul>
+
+<h4>Explicit Record (no colon at start)</h4>
+<pre><code>192.0.0.2:192.0.0.0:Sample TXT
+</code></pre>
+<ul>
+  <li>Queried IP: <code>192.0.0.2</code></li>
+  <li>A record: <code>192.0.0.0</code></li>
+  <li>TXT record: <code>"Sample TXT"</code></li>
+</ul>
+
+<h4>Record without A value (default A used)</h4>
+<pre><code>192.0.0.2 Sample TXT
+</code></pre>
+<ul>
+  <li>Queried IP: <code>192.0.0.2</code></li>
+  <li>A record = default A</li>
+  <li>TXT Record: <code>"Sample TXT"</code></li>
+</ul>
+
+<h4>Record without TXT value</h4>
+<pre><code>192.0.0.2:192.0.0.0:
+</code></pre>
+<ul>
+  <li>A record = <code>192.0.0.0</code></li>
+  <li>TXT Record = <em>nothing</em> (returns no TXT if there’s a colon at the end)</li>
+</ul>
+
+<h3>Substitution Variables</h3>
+<p>You can use <code>$</code> to insert dynamic data:</p>
+
+<ol>
+  <li>
+    <p><code>$</code> inserts the queried IP or domain</p>
+    <pre><code>192.0.0.2:192.0.0.0:Blocked host $
+</code></pre>
+    <p>TXT returned: <code>"Blocked host 192.0.0.2"</code></p>
+  </li>
+  <li>
+    <p><code>$n</code> for user-defined variables</p>
+    <pre><code>$1 Spam IP
+$2 Alert
+127.0.0.2 $1 $2
+</code></pre>
+    <p>TXT returned: <code>"Spam IP Alert"</code></p>
+  </li>
+  <li>
+    <p><code>$=</code> as a base template</p>
+    <pre><code>$0 See http://www.example.com/bl?$= ($) for details
+127.0.0.2 r123
+</code></pre>
+    <p>TXT returned: <code>"See http://www.example.com/bl?r123 (192.0.0.2) for details"</code></p>
+  </li>
+</ol>
+
+<h3>Comments</h3>
+<p>You can add comments using:</p>
+<ul>
+  <li><code>#</code> (hash)</li>
+  <li><code>;</code> (semicolon)</li>
+</ul>
+<p>Example:</p>
+<pre><code>127/8 ; Loopback network
+</code></pre>
+
+<h3>Zone File Directives</h3>
+
+<p>Used at the top of your dataset file:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Directive</th>
+      <th>Description</th>
+      <th>Example</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>$SOA</code></td>
+      <td>Start of Authority</td>
+      <td><code>$SOA 3600 rbldnsd.example.com admin.example.com 2025063001 7200 3600 1209600 3600</code></td>
+    </tr>
+    <tr>
+      <td><code>$NS</code></td>
+      <td>Name servers</td>
+      <td><code>$NS 3600 ns1.example.com ns2.example.com</code></td>
+    </tr>
+    <tr>
+      <td><code>$TTL</code></td>
+      <td>Default TTL</td>
+      <td><code>$TTL 3600</code></td>
+    </tr>
+    <tr>
+      <td><code>$MAXRANGE4</code></td>
+      <td>Maximum allowed CIDR or IP range</td>
+      <td><code>$MAXRANGE4 /24</code> or <code>$MAXRANGE4 256</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>Dataset Types</h2>
+
+<h3>1. ip4set</h3>
+<p>Defines IPv4 addresses and ranges to be listed in a DNSBL zone.</p>
+
+<h4>Supported Formats</h4>
+<ul>
+  <li>Single IP: <code>127.0.0.1</code></li>
+  <li>CIDR Notation: <code>127.0.0.0/24</code></li>
+  <li>Shorthand and Ranges (equivalent to <code>192.0.0.0/24</code>):</li>
+</ul>
+<pre><code>192.0.0
+192/24
+192-192.0.0
+192.0.0.0-192.0.0.255
+192.0.0.1-255
+</code></pre>
+
+<h4>Exclusion</h4>
+<p>Use <code>!</code> to exclude IPs or ranges.</p>
+<pre><code>127.0.0.0/24:127.0.0.3:Blocked subnet
+!127.0.0.42
+</code></pre>
+<p>Querying <code>192.0.0.2</code> returns:</p>
+<ul>
+  <li>A = <code>127.0.0.3</code></li>
+  <li>TXT = <code>"Blocked subnet"</code></li>
+</ul>
+<p>Querying <code>127.0.0.42</code> returns nothing (excluded).</p>
+
+<h3>2. ip4trie</h3>
+<p>Supports only CIDR, each with optional A and TXT values.</p>
+<ul>
+  <li>If multiple ranges match, the most specific (longest prefix) CIDR is used.</li>
+  <li>Exclusions (<code>!</code>) supported.</li>
+  <li><strong>Not supported:</strong> IP address ranges or shorthand notations.</li>
+</ul>
+
+<h3>3. ip4tset</h3>
+<p>A “trivial” IP4 set optimized for fast lookup of single IPv4 addresses sharing the same A and TXT values.</p>
+
+<h3>4. ip6trie</h3>
+<p>Handles IPv6 CIDR ranges, similar to <code>ip4trie</code>.</p>
+
+<p>Examples:</p>
+<pre><code>2001:21ab:c000/36            # Listing, trailing zeros omitted
+2001:21ab:def7:4242 :127.0.1.3:This one smells funny
+2605:6001:42::/52            # Compressed notation
+::1                          # localhost
+!2605:6001:42::bead          # Exclusion
+</code></pre>
+
+<h3>5. ip6tset</h3>
+<p>IPv6 “trivial” set optimized for efficiency:</p>
+<ul>
+  <li>Contains only IPv6 /64 CIDR ranges (one per line).</li>
+  <li>Supports exclusions of single IPv6 addresses (/128).</li>
+  <li>Uses ~40% memory compared to <code>ip6trie</code>.</li>
+</ul>
+
+<h3>6. dnset</h3>
+<p>Domain name sets (optionally wildcarded), with A and TXT records.</p>
+<ul>
+  <li>Works with domains, not IPs.</li>
+  <li>Supports wildcards:
+    <ul>
+      <li><code>*.</code> matches all subdomains but <strong>not</strong> the domain itself.</li>
+      <li><code>.</code> matches the domain and all subdomains.</li>
+    </ul>
+  </li>
+  <li>Lines starting with <code>!</code> exclude domains.</li>
+  <li>Default A and TXT value set with a line starting with <code>:</code>.</li>
+</ul>
+
+<p>Example file:</p>
+<pre><code>:127.0.0.2:Listed domain        # Default A and TXT Record
+example.com Sample TXT           # Individual TXT Record
+*.example.com
+.badexample.com
+!excluded.example.com
+.example.net
+*.example.com:2:Sample TXT      # Specific A (2 = 127.0.0.2)
+</code></pre>
+
+<h3>7. Generic Dataset</h3>
+<p>BIND-style zone file format.</p>
+<ul>
+  <li>Each DNS record on one line; no line continuations.</li>
+  <li>No wildcards.</li>
+  <li>Supports A, TXT, MX records.</li>
+  <li>TTL can be specified.</li>
+</ul>
+
+<p>Example:</p>
+<pre><code>www 3000 A 127.0.0.1
+about TXT "ex.com combined blocklist"
+mail MX 10 mail.ex.com.
+</code></pre>
+
+<h3>8. Combined Dataset</h3>
+<p>Container for multiple datasets (except combined inside combined).</p>
+<ul>
+  <li>Simplifies subzone management.</li>
+  <li>Supports multiple nested datasets with their subzones.</li>
+  <li>Use <code>@</code> to refer to the base zone.</li>
+</ul>
+
+<p>Syntax:</p>
+<pre><code>$DATASET type[:name] subzone1 subzone2 ...
+</code></pre>
+
+<p>Example file:</p>
+<pre><code># Common section for base zone (bl.ex.com)
+$NS 1w ns1.ex.com ns2.ex.com
+$SOA 1w ns1.ex.com admin.ex.com 0 2h 2h 1w 1h
+
+# Open proxies dataset in 'proxies' subzone and base zone (@)
+$DATASET ip4set:proxy proxies @
+:2:Open proxy, see http://bl.ex.com/proxy/$
+127.0.0.2
+127.0.0.10
+
+# Open relays dataset in 'relays' subzone and base zone (@)
+$DATASET ip4set:relay relays @
+:3:Open relay, see http://bl.ex.com/relay/$
+127.0.0.2
+127.0.2.10
+
+# Multihop open relays only in 'multihop' subzone
+$DATASET ip4set:multihop-relay multihop
+:4:Multihop open relay, see http://bl.ex.com/relay/$
+127.0.0.2
+127.0.9.12
+
+# Generic records common to all subzones and base zone
+$DATASET generic:common proxies relays multihop @
+@ A 127.0.0.8
+www A 127.0.0.8
+@ MX 10 mx.ex.com
+</code></pre>
+
+<h3>9. ACL Dataset</h3>
+<p>Matches <strong>client IPs</strong> (the query origin), not the queried domain/IP.</p>
+<p>Actions:</p>
+<table>
+  <thead>
+    <tr>
+      <th>Action</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>ignore</td><td>Drop query silently, no response (default).</td></tr>
+    <tr><td>refuse</td><td>Return DNS REFUSED response.</td></tr>
+    <tr><td>empty</td><td>Pretend nothing is listed (SOA, NS, generic still work).</td></tr>
+    <tr><td>pass</td><td>Allow query normally (whitelist).</td></tr>
+    <tr><td>A+TXT</td><td>Return fake “listed” result for all queries (useful to block clients).</td></tr>
+  </tbody>
+</table>
+
+<p>Syntax:</p>
+<pre><code>&lt;client-cidr&gt; :&lt;action or A/TXT template&gt;
+</code></pre>
+
+<p>Example ACL:</p>
+<pre><code># Block silently
+192.0.2.0/24 :ignore
+
+# Refuse scraping bot
+198.51.100.7 :refuse
+
+# Treat network as empty
+203.0.113.0/24 :empty
+
+# Whitelist one IP in blocked range
+203.0.113.25 :pass
+
+# Fake listing (block client)
+10.10.10.10 :127.0.0.2:Blocked due to abuse from IP $
+</code></pre>
+
+<h2>Command-Line Options</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th>Option</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td><code>-u user[:group]</code></td><td>Run as specified user/group</td></tr>
+    <tr><td><code>-r rootdir</code></td><td>Chroot to rootdir (data files must be inside this directory)</td></tr>
+    <tr><td><code>-w workdir</code></td><td>Change working directory after chrooting</td></tr>
+    <tr><td><code>-b address/port</code></td><td>Bind and listen on given address/port (default port 53). Multiple allowed. Use <code>/</code> for IPv6.</td></tr>
+    <tr><td><code>-B address/port</code></td><td>Additional port for queuing update requests during reload</td></tr>
+    <tr><td><code>-l logfile</code></td><td>Log DNS requests (prefix with <code>+</code> for buffering). Use <code>-</code> for stdout</td></tr>
+    <tr><td><code>-t defttl:minttl:maxttl</code></td><td>Set TTL values (default 35 minutes). Time units: s, m, h, d, w</td></tr>
+    <tr><td><code>-c check</code></td><td>Interval for zone file change check (default 1 minute). <code>0</code> disables.</td></tr>
+    <tr><td><code>-d</code></td><td>Dump zones in BIND zone file format and exit (ignores <code>-r</code>)</td></tr>
+  </tbody>
+</table>
+
+<h3>Signals</h3>
+<ul>
+  <li><code>SIGHUP</code> — Reload zones</li>
+  <li><code>SIGUSR2</code> — Reset statistics counters</li>
+</ul>
+
+<h2>Example</h2>
+
+<p>Starting rbldnsd:</p>
+<pre><code>rbldnsd -r /var/lib/rbldnsd -b 127.0.0.1/5300 -l ./rbl.log \
+dnsbl.example.com:ip4set:bl1.txt,bl2.txt \
+dnsbl2.example.com:dnset:dn.txt \
+dnsbl3.example.com:generic:generic.txt
+</code></pre>
+
+<h3>Sample Dataset Files</h3>
+
+<p><strong>bl1.txt (ip4set dataset)</strong></p>
+<pre><code>127.0.0.2
+192.168.1.10
+10.0.0.5
+</code></pre>
+
+<p><strong>bl2.txt (ip4set dataset)</strong></p>
+<pre><code>10.0.0.10-20
+!10.0.0.15
+</code></pre>
+
+<p><strong>dn.txt (dnset dataset)</strong></p>
+<pre><code>:127.0.0.2:Listed domain
+example.com Sample TXT
+*.example.com
+!excluded.example.com
+</code></pre>
+
+<p><strong>generic.txt (generic dataset)</strong></p>
+<pre><code>@ A 127.0.0.1
+www A 127.0.0.1
+@ MX 10 mail.example.com.
+</code></pre>
+
+</body>
+</html>
